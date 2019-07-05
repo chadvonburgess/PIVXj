@@ -20,12 +20,8 @@ import com.google.common.base.Function;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
-import com.zerocoinj.core.accumulators.Accumulator;
-import com.zerocoinj.core.accumulators.Accumulators;
-import host.furszy.zerocoinj.protocol.AccIndexHelper;
-import host.furszy.zerocoinj.protocol.AccValueMessage;
-import host.furszy.zerocoinj.protocol.AccValueResponseMessage;
-import host.furszy.zerocoinj.store.AccStoreException;
+
+
 import org.pivxj.core.listeners.*;
 import org.pivxj.net.StreamConnection;
 import org.pivxj.store.BlockStore;
@@ -40,13 +36,11 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.SettableFuture;
 import net.jcip.annotations.GuardedBy;
-import host.furszy.zerocoinj.protocol.PubcoinsMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executor;
@@ -186,9 +180,6 @@ public class Peer extends PeerSocketHandler {
                 }
             });
 
-
-    // Checksum --> AccAccumulator
-    private final ConcurrentHashMap<AccIndexHelper, AccValueMessage> waitingAccMessages = new ConcurrentHashMap<>();
 
     /**
      * <p>Construct a peer that reads/writes from the given block chain.</p>
@@ -568,10 +559,6 @@ public class Peer extends PeerSocketHandler {
             }catch (VerificationException.DuplicatedOutPoint e){
                 log.error("Duplicated output, could be a zcspend output..",e);
             }
-        } else if(m instanceof PubcoinsMessage) {
-            processPubcoins((PubcoinsMessage) m);
-        } else if(m instanceof AccValueResponseMessage){
-            processAccValueresponse((AccValueResponseMessage) m);
         } else if (m instanceof GetDataMessage) {
             processGetData((GetDataMessage) m);
         } else if (m instanceof AddressMessage) {
@@ -626,45 +613,6 @@ public class Peer extends PeerSocketHandler {
         else
         {
             log.warn("{}: Received unhandled message: {}", this, m);
-        }
-    }
-
-    /**
-     * Public only for testing
-     * @param m
-     */
-    public void processPubcoins(PubcoinsMessage m) {
-        for (ListenerRegistration<OnGetDataResponseEventListener> getDataEventListener : onGetDataResponseEventListener) {
-            getDataEventListener.listener.onResponseReceived(m);
-        }
-    }
-
-    public void processAccValueresponse(AccValueResponseMessage m){
-        try {
-            log.info("processAccValueresponse");
-            if (context.accStore == null){
-                log.error("ERROR, context.accStore not implemented.. you will not able to spend your zPIV.");
-                return;
-            }
-            // To know the hight i need to parse this and get the checksum
-            long checksum = Accumulators.getChecksum(m.getAccValue());
-            AccValueMessage accValueMessage = waitingAccMessages.remove(new AccIndexHelper(m.getHeight(),checksum));
-            if (accValueMessage == null){
-                if (waitingAccMessages.isEmpty()){
-                    // Surely this acc value is on the db already..
-                    log.error("¢¢¢¢¢ Trying to find a unknown waiting acc message, Surely is because of an already know accvalue, checksum: " + checksum + ", value " + m.getAccValue() + "");
-                }else {
-                    log.error("¢¢¢¢¢ Trying to find a unknown waiting acc message, checksum: " + checksum + ", waiting request:: " + waitingAccMessages.values().iterator().next().toString());
-                }
-                return;
-            }
-            context.accStore.put(
-                    accValueMessage.getHeight(),
-                    new Accumulator(context.zerocoinContext.accumulatorParams, accValueMessage.getDenom(), m.getAccValue())
-            );
-            log.info("Acc value saved for " + accValueMessage);
-        }catch (Exception e){
-            log.error("Cannot process acc value response" , e);
         }
     }
 
@@ -1703,21 +1651,6 @@ public class Peer extends PeerSocketHandler {
         }
         sendMessage(new GetAddrMessage(params));
         return future;
-    }
-
-    /**
-     *
-     * @param checkpointChecksum --> should be calculated..
-     * @param m
-     */
-    public void sendAccValueRequest(long checkpointChecksum, AccValueMessage m){
-        log.info("Sending accValue: " + m + ", with checksum: " + checkpointChecksum);
-        waitingAccMessages.put(
-                new AccIndexHelper(
-                        m.getHeight(),
-                        checkpointChecksum
-                ), m);
-        sendMessage(m);
     }
 
     /**

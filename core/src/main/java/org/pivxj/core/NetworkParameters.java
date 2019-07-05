@@ -485,8 +485,8 @@ public abstract class NetworkParameters {
      */
     public abstract BitcoinSerializer getSerializer(boolean parseRetain);
 
+//         * The number of blocks in the last {@link getMajorityWindow()} blocks
     /**
-     * The number of blocks in the last {@link getMajorityWindow()} blocks
      * at which to trigger a notice to the user to upgrade their client, where
      * the client does not understand those blocks.
      */
@@ -494,8 +494,8 @@ public abstract class NetworkParameters {
         return majorityEnforceBlockUpgrade;
     }
 
+//         * The number of blocks in the last {@link getMajorityWindow()} blocks
     /**
-     * The number of blocks in the last {@link getMajorityWindow()} blocks
      * at which to enforce the requirement that all new blocks are of the
      * newer type (i.e. outdated blocks are rejected).
      */

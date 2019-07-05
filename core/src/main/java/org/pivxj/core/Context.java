@@ -14,10 +14,6 @@
 
 package org.pivxj.core;
 
-import com.zerocoinj.JniBridge;
-import com.zerocoinj.core.context.ZerocoinContext;
-import host.furszy.zerocoinj.store.AccStore;
-import host.furszy.zerocoinj.store.coins.MintsStore;
 import org.pivxj.core.listeners.BlockChainListener;
 import org.pivxj.store.FlatDB;
 import org.pivxj.store.MasternodeDB;
@@ -54,8 +50,6 @@ import static com.google.common.base.Preconditions.*;
 public class Context {
     private static final Logger log = LoggerFactory.getLogger(Context.class);
 
-    public static ZerocoinContext zerocoinContext;
-
     private TxConfidenceTable confidenceTable;
     private NetworkParameters params;
     private int eventHorizon = 100;
@@ -67,8 +61,6 @@ public class Context {
     private boolean allowInstantX = true; //allow InstantX in litemode
     public PeerGroup peerGroup;
     public AbstractBlockChain blockChain;
-    public AccStore accStore;
-    public MintsStore mintsStore;
     public SporkManager sporkManager;
     public MasternodeManager masternodeManager;
     public MasternodePayments masternodePayments;
@@ -94,11 +86,6 @@ public class Context {
         lastConstructed = this;
         // We may already have a context in our TLS slot. This can happen a lot during unit tests, so just ignore it.
         slot.set(this);
-        if (!Utils.isAndroidRuntime()){
-            zerocoinContext  = new ZerocoinContext(new JniBridge());
-        }else {
-            zerocoinContext = new ZerocoinContext(null);
-        }
     }
 
     /**
@@ -106,9 +93,10 @@ public class Context {
      *
      * @param params The network parameters that will be associated with this context.
      * @param eventHorizon Number of blocks after which the library will delete data and be unable to always process reorgs (see {@link #getEventHorizon()}.
-     * @param feePerKb The default fee per 1000 bytes of transaction data to pay when completing transactions. For details, see {@link SendRequest#feePerKb}.
-     * @param ensureMinRequiredFee Whether to ensure the minimum required fee by default when completing transactions. For details, see {@link SendRequest#ensureMinRequiredFee}.
+     * @param ensureMinRequiredFee Whether to ensure the minimum required fee by default when completing transactions. For details, see?
      */
+//         * @param feePerKb The default fee per 1000 bytes of transaction data to pay when completing transactions. For details, see {@link SendRequest#feePerKb}.
+
     public Context(NetworkParameters params, int eventHorizon, Coin feePerKb, boolean ensureMinRequiredFee) {
         this(params);
         this.eventHorizon = eventHorizon;
@@ -329,16 +317,16 @@ public class Context {
             return false;
         }
     };
-    /**
-     * The default fee per 1000 bytes of transaction data to pay when completing transactions. For details, see {@link SendRequest#feePerKb}.
-     */
+//    /**
+//     * The default fee per 1000 bytes of transaction data to pay when completing transactions. For details, see {@link SendRequest#feePerKb}.
+//     */
     public Coin getFeePerKb() {
         return feePerKb;
     }
 
-    /**
-     * Whether to ensure the minimum required fee by default when completing transactions. For details, see {@link SendRequest#ensureMinRequiredFee}.
-     */
+//    /**
+//     * Whether to ensure the minimum required fee by default when completing transactions. For details, see {@link SendRequest#ensureMinRequiredFee}.
+//     */
     public boolean isEnsureMinRequiredFee() {
         return ensureMinRequiredFee;
     }

@@ -17,10 +17,6 @@
 
 package org.pivxj.core;
 
-import host.furszy.zerocoinj.protocol.AccValueMessage;
-import host.furszy.zerocoinj.protocol.AccValueResponseMessage;
-import host.furszy.zerocoinj.protocol.GenWitMessage;
-import host.furszy.zerocoinj.protocol.PubcoinsMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.spongycastle.util.encoders.Hex;
@@ -32,8 +28,12 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
+import host.furszy.zerocoinj.protocol.PubcoinsMessage;
+
 import static org.pivxj.core.Transaction.MAX_STANDARD_TX_SIZE;
-import static org.pivxj.core.Utils.*;
+import static org.pivxj.core.Utils.HEX;
+import static org.pivxj.core.Utils.readUint32;
+import static org.pivxj.core.Utils.uint32ToByteArrayBE;
 
 /**
  * <p>Methods to serialize and de-serialize messages to the Bitcoin network format as defined in
@@ -77,9 +77,6 @@ public class BitcoinSerializer extends MessageSerializer {
         names.put(RejectMessage.class, "reject");
         names.put(GetUTXOsMessage.class, "getutxos");
         names.put(UTXOsMessage.class, "utxos");
-        names.put(GenWitMessage.class, "genwit");
-        names.put(AccValueMessage.class, "accvalue");
-        names.put(AccValueResponseMessage.class, "accvalueresponse");
 
         //Dash specific messages
         names.put(DarkSendElectionEntryPingMessage.class, "dseep");
@@ -266,8 +263,6 @@ public class BitcoinSerializer extends MessageSerializer {
             return new UTXOsMessage(params, payloadBytes);
         } else if (command.equals("getutxos")) {
             return new GetUTXOsMessage(params, payloadBytes);
-        } else if (command.equals("accvalueresp")){
-            return new AccValueResponseMessage(params, payloadBytes);
         } else if (command.equals("dseep")) {
             return new DarkSendElectionEntryPingMessage(params, payloadBytes);
         } else if (command.equals("ix")) {

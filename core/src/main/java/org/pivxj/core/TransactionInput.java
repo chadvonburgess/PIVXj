@@ -17,9 +17,6 @@
 
 package org.pivxj.core;
 
-import com.zerocoinj.core.CoinDenomination;
-import com.zerocoinj.core.CoinSpend;
-import com.zerocoinj.core.ZCoin;
 import org.pivxj.script.Script;
 import org.pivxj.wallet.DefaultRiskAnalysis;
 import org.pivxj.wallet.KeyBag;
@@ -160,18 +157,8 @@ public class TransactionInput extends ChildMessage {
      * Coinbase transactions have special inputs with hashes of zero. If this is such an input, returns true.
      */
     public boolean isCoinBase() {
-        boolean ret = outpoint.getHash().equals(Sha256Hash.ZERO_HASH) &&
+        return outpoint.getHash().equals(Sha256Hash.ZERO_HASH) &&
                 (outpoint.getIndex() & 0xFFFFFFFFL) == 0xFFFFFFFFL;  // -1 but all is serialized to the wire as unsigned int.
-        // Check for zcspend/zcmint
-        if (ret){
-            try {
-                CoinDenomination.fromValue((int) sequence);
-                return false;
-            }catch (Exception e){
-                // Nothing..
-            }
-        }
-        return ret;
     }
 
     /**
@@ -367,50 +354,11 @@ public class TransactionInput extends ChildMessage {
         Transaction tx = transactions.get(outpoint.getHash());
         if (tx == null) {
             // if the input is a zc_spend then the way of connect the input is different
-            if (isZcspend()){
-                CoinSpend coinSpend = getScriptSig().getCoinSpend(params, Context.zerocoinContext);
-                ZCoin zCoin = wallet.getActiveKeyChain().getZcoinsAssociatedToSerial(coinSpend.getCoinSerialNumber());
-                if (zCoin != null){
-                    // now i can get the tx that minted this value
-                    for (Transaction transaction : transactions.values()) {
-                        for (TransactionOutput output : transaction.getOutputs()) {
-                            if (output.isZcMint() && output.getScriptPubKey().getCommitmentValue().equals(zCoin.getCommitment().getCommitmentValue())){
-                                tx = transaction;
-                                break;
-                            }
-                        }
-                        if (tx != null) break;
-                    }
-                }
-                if (tx != null){
-                    return connect(tx, zCoin ,mode);
-                }
-            }
             return TransactionInput.ConnectionResult.NO_SUCH_TX;
         }
-        return connect(tx, null, mode);
+        return connect(tx, mode);
     }
 
-    /**
-     * TODO: Check this better..
-     * @param wallet
-     * @param tx
-     * @return
-     */
-    public ZCoin checkIfHasConnection(Wallet wallet, Transaction tx){
-        if (isZcspend()) {
-            CoinSpend coinSpend = getScriptSig().getCoinSpend(params, Context.zerocoinContext);
-            ZCoin zCoin = wallet.getActiveKeyChain().getZcoinsAssociatedToSerial(coinSpend.getCoinSerialNumber());
-            if (zCoin != null) {
-                for (TransactionOutput output : tx.getOutputs()) {
-                    if (output.isZcMint() && output.getScriptPubKey().getCommitmentValue().equals(zCoin.getCommitment().getCommitmentValue())){
-                        return zCoin;
-                    }
-                }
-            }
-        }
-        return null;
-    }
 
     /**
      * Connects this input to the relevant output of the referenced transaction.
@@ -421,26 +369,14 @@ public class TransactionInput extends ChildMessage {
      * @param mode   Whether to abort if there's a pre-existing connection or not.
      * @return NO_SUCH_TX if transaction is not the prevtx, ALREADY_SPENT if there was a conflict, SUCCESS if not.
      */
-    public ConnectionResult connect(Transaction transaction, ZCoin zCoin ,ConnectMode mode) {
+    public ConnectionResult connect(Transaction transaction, ConnectMode mode) {
         TransactionOutput out = null;
         long privateIndex = -1;
-        if (outpoint.getHash().equals(Sha256Hash.ZERO_HASH)){
-            // This is a zc_spend
-            logger.info("Connecting zc_spend..");
-            for (TransactionOutput output : transaction.getOutputs()) {
-                if (output.isZcMint() && output.getScriptPubKey().getCommitmentValue().equals(zCoin.getCommitment().getCommitmentValue())){
-                    out = output;
-                    break;
-                }
-            }
-            if (out == null) return ConnectionResult.NO_SUCH_TX;
-            privateIndex = out.getIndex();
-        }else {
+
             if (!transaction.getHash().equals(outpoint.getHash()))
                 return ConnectionResult.NO_SUCH_TX;
             checkElementIndex((int) outpoint.getIndex(), transaction.getOutputs().size(), "Corrupt transaction");
             out = transaction.getOutput((int) outpoint.getIndex());
-        }
         if (!out.isAvailableForSpending()) {
             if (getParentTransaction().equals(outpoint.fromTx)) {
                 // Already connected.

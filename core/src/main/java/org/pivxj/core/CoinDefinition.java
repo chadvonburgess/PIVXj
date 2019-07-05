@@ -11,7 +11,6 @@ import java.util.Map;
  */
 public class CoinDefinition {
 
-
     public static final String coinName = "Pivx";
     public static final String coinTicker = "PIVX";
     public static final String coinURIScheme = "pivx";
@@ -26,16 +25,18 @@ public class CoinDefinition {
     }
     public static final CoinPrecision coinPrecision = CoinPrecision.Coins;
 
-    public static final String UNSPENT_API_URL = "https://chainz.cryptoid.info/dash/api.dws?q=unspent";
+    public static final String UNSPENT_API_URL = "https://chainz.cryptoid.info/n8v/api.dws?q=unspent";
     public enum UnspentAPIType {
         BitEasy,
         Blockr,
         Abe,
         Cryptoid,
     };
+
+
     public static final UnspentAPIType UnspentAPI = UnspentAPIType.Cryptoid;
 
-    public static final String BLOCKEXPLORER_BASE_URL_PROD = "http://explorer.pivx.org/";    //blockr.io
+    public static final String BLOCKEXPLORER_BASE_URL_PROD = "http://explorer.n8v.org/";    //blockr.io
     public static final String BLOCKEXPLORER_ADDRESS_PATH = "address/";             //blockr.io path
     public static final String BLOCKEXPLORER_TRANSACTION_PATH = "tx/";              //blockr.io path
     public static final String BLOCKEXPLORER_BLOCK_PATH = "block/";                 //blockr.io path

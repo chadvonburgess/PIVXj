@@ -23,18 +23,7 @@ import com.google.common.collect.*;
 import com.google.common.primitives.*;
 import com.google.common.util.concurrent.*;
 import com.google.protobuf.*;
-import com.zerocoinj.core.CoinDenomination;
-import com.zerocoinj.core.CoinSpend;
-import com.zerocoinj.core.ZCoin;
-import com.zerocoinj.core.accumulators.Accumulator;
-import com.zerocoinj.core.accumulators.Accumulators;
-import host.furszy.zerocoinj.WalletFilesInterface;
-import host.furszy.zerocoinj.protocol.AccValueMessage;
-import host.furszy.zerocoinj.protocol.GenWitMessage;
-import host.furszy.zerocoinj.store.AccStoreException;
-import host.furszy.zerocoinj.store.coins.StoredMint;
-import host.furszy.zerocoinj.wallet.CannotCompleteSendRequestException;
-import host.furszy.zerocoinj.wallet.ZCSpendRequest;
+
 import net.jcip.annotations.*;
 import org.pivxj.core.*;
 import org.pivxj.core.Message;
@@ -58,7 +47,6 @@ import org.spongycastle.crypto.params.*;
 
 import javax.annotation.*;
 import java.io.*;
-import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.*;
@@ -104,8 +92,6 @@ import static java.lang.Math.max;
  * auto-save feature that simplifies this for you although you're still responsible for manually triggering a save when
  * your app is about to quit because the auto-save feature waits a moment before actually committing to disk to avoid IO
  * thrashing when the wallet is changing very fast (eg due to a block chain sync). See
- * {@link Wallet#autosaveToFile(java.io.File, long, java.util.concurrent.TimeUnit, host.furszy.zerocoinj.wallet.files.Listener)}
- * for more information about this.</p>
  */
 public class Wallet extends BaseTaggableObject
     implements NewBestBlockListener, TransactionReceivedInBlockListener, PeerFilterProvider, KeyBag, TransactionBag, ReorganizeListener {
@@ -209,7 +195,7 @@ public class Wallet extends BaseTaggableObject
     private int onWalletChangedSuppressions;
     private boolean insideReorg;
     private Map<Transaction, TransactionConfidence.Listener.ChangeReason> confidenceChanged;
-    protected volatile WalletFilesInterface vFileManager;
+    protected volatile WalletFiles vFileManager;
     // Object that is used to send transactions asynchronously when the wallet requires it.
     protected volatile TransactionBroadcaster vTransactionBroadcaster;
     // UNIX time in seconds. Money controlled by keys created before this time will be automatically respent to a key
@@ -487,30 +473,6 @@ public class Wallet extends BaseTaggableObject
     }
 
     /**
-     *
-     * @param purpose
-     * @param numberOfKeys
-     * @return
-     */
-    public List<ZCoin> freshZcoins(KeyChain.KeyPurpose purpose, int numberOfKeys) {
-        List<ZCoin> keysCommitments = new ArrayList<>();
-        List<DeterministicKey> keys;
-        keyChainGroupLock.lock();
-        try {
-            keys = keyChainGroup.freshKeys(purpose, numberOfKeys);
-            for (DeterministicKey key : keys) {
-                keysCommitments.add(keyChainGroup.getZcoinsAssociated(key));
-            }
-        } finally {
-            keyChainGroupLock.unlock();
-        }
-        // Do we really need an immediate hard save? Arguably all this is doing is saving the 'current' key
-        // and that's not quite so important, so we could coalesce for more performance.
-        saveNow();
-        return keysCommitments;
-    }
-
-    /**
      * An alias for calling {@link #freshKey(org.pivxj.wallet.KeyChain.KeyPurpose)} with
      * {@link org.pivxj.wallet.KeyChain.KeyPurpose#RECEIVE_FUNDS} as the parameter.
      */
@@ -715,7 +677,6 @@ public class Wallet extends BaseTaggableObject
 
     /**
      * Imports the given keys to the wallet.
-     * If {@link Wallet#autosaveToFile(java.io.File, long, java.util.concurrent.TimeUnit,  host.furszy.zerocoinj.wallet.files.Listener)}
      * has been called, triggers an auto save bypassing the normal coalescing delay and event handlers.
      * Returns the number of keys added, after duplicates are ignored. The onKeyAdded event will be called for each key
      * in the list that was not already present.
@@ -1040,27 +1001,6 @@ public class Wallet extends BaseTaggableObject
         keyChainGroupLock.lock();
         try {
             return watchedScripts.contains(script);
-        } finally {
-            keyChainGroupLock.unlock();
-        }
-    }
-
-    @Override
-    public boolean isZcScriptMine(Script script) {
-        keyChainGroupLock.lock();
-        try{
-            if (watchedScripts.contains(script)){
-                return true;
-            }else {
-                if (script.isZcMint()){
-                    BigInteger commitmentValue = script.getCommitmentValue();
-                    return keyChainGroup.isCommitmentValuesMine(commitmentValue);
-                }else if (script.isZcSpend()){
-                    CoinSpend coinSpend = script.getCoinSpend(params, Context.zerocoinContext);
-                    return keyChainGroup.isCoinSerialMine(coinSpend.getCoinSerialNumber());
-                }
-                return false;
-            }
         } finally {
             keyChainGroupLock.unlock();
         }
@@ -1471,7 +1411,7 @@ public class Wallet extends BaseTaggableObject
      * @param eventListener callback to be informed when the auto-save thread does things, or null
      */
     public WalletFiles autosaveToFile(File f, long delayTime, TimeUnit timeUnit,
-                                      @Nullable host.furszy.zerocoinj.wallet.files.Listener eventListener) {
+                                      WalletFiles.Listener eventListener) {
         lock.lock();
         try {
             checkState(vFileManager == null, "Already auto saving this wallet.");
@@ -1485,32 +1425,16 @@ public class Wallet extends BaseTaggableObject
         }
     }
 
-    public WalletFilesInterface autosaveToFile(WalletFilesInterface walletFiles,
-                                               @Nullable host.furszy.zerocoinj.wallet.files.Listener eventListener) {
-        lock.lock();
-        try {
-            checkState(vFileManager == null, "Already auto saving this wallet.");
-            WalletFilesInterface manager = walletFiles;
-            if (eventListener != null)
-                manager.setListener(eventListener);
-            vFileManager = manager;
-            return manager;
-        } finally {
-            lock.unlock();
-        }
-    }
-
     /**
      * <p>
      * Disables auto-saving, after it had been enabled with
-     * {@link Wallet#autosaveToFile(java.io.File, long, java.util.concurrent.TimeUnit, host.furszy.zerocoinj.wallet.files.Listener)}
      * before. This method blocks until finished.
      * </p>
      */
     public void shutdownAutosaveAndWait() {
         lock.lock();
         try {
-            WalletFilesInterface files = vFileManager;
+            WalletFiles files = vFileManager;
             vFileManager = null;
             checkState(files != null, "Auto saving not enabled.");
             files.shutdownAndWait();
@@ -1521,14 +1445,14 @@ public class Wallet extends BaseTaggableObject
 
     /** Requests an asynchronous save on a background thread */
     protected void saveLater() {
-        WalletFilesInterface files = vFileManager;
+        WalletFiles files = vFileManager;
         if (files != null)
             files.saveLater();
     }
 
     /** If auto saving is enabled, do an immediate sync write to disk ignoring any delays. */
     protected void saveNow() {
-        WalletFilesInterface files = vFileManager;
+        WalletFiles files = vFileManager;
         if (files != null) {
             try {
                 files.saveNow();  // This calls back into saveToFile().
@@ -1913,42 +1837,14 @@ public class Wallet extends BaseTaggableObject
     public boolean isTransactionRelevant(Transaction tx) throws ScriptException {
         lock.lock();
         try {
-            // Before check this, try to connect the output in case of zc_spend
-            try {
-                for (int i = 0; i < tx.getInputs().size(); i++) {
-                    TransactionInput input = tx.getInputs().get(i);
-                    if (input.isZcspend()) {
-                        CoinSpend coinSpend = input.getScriptSig().getCoinSpend(params, Context.zerocoinContext);
-                        ZCoin zCoin = getActiveKeyChain().getZcoinsAssociatedToSerial(coinSpend.getCoinSerialNumber());
-                        if (zCoin != null) {
-                            // now i can get the tx that minted this value
-                            Sha256Hash parentHash = null;
-                            int index = -1;
-                            for (Transaction transaction : transactions.values()) {
-                                for (TransactionOutput output : transaction.getOutputs()) {
-                                    if (output.isZcMint() && output.getScriptPubKey().getCommitmentValue().equals(zCoin.getCommitment().getCommitmentValue())) {
-                                        parentHash = transaction.getHash();
-                                        index = output.getIndex();
-                                        break;
-                                    }
-                                }
-                                if (parentHash != null) break;
-                            }
-                            input.getOutpoint().setPrivateIndex(index);
-                            input.getOutpoint().setPrivateHash(parentHash);
-                        }
-                    }
-                }
-            }catch (Exception e){
-                log.error("exception on zc_spend parsing..",e);
-            }
             return tx.getValueSentFromMe(this).signum() > 0 ||
-                   tx.getValueSentToMe(this).signum() > 0 ||
-                   !findDoubleSpendsAgainst(tx, transactions).isEmpty();
+                    tx.getValueSentToMe(this).signum() > 0 ||
+                    !findDoubleSpendsAgainst(tx, transactions).isEmpty();
         } finally {
             lock.unlock();
         }
     }
+
 
     /**
      * Finds transactions in the specified candidates that double spend "tx". Not a general check, but it can work even if
@@ -2444,18 +2340,8 @@ public class Wallet extends BaseTaggableObject
         for (Transaction pendingTx : pending.values()) {
             for (TransactionInput input : pendingTx.getInputs()) {
                 // TODO: Check this, have to be changed to the new method with the zcoin..
-                TransactionInput.ConnectionResult result;
-                if (input.isZcspend()){
-                    ZCoin coin = input.checkIfHasConnection(this, pendingTx);
-                    if (coin != null)
-                        result = input.connect(tx, coin, TransactionInput.ConnectMode.ABORT_ON_CONFLICT);
-                    else {
-                        log.error("### NULL ON COIN CHECK..");
-                        result = input.connect(tx, coin, TransactionInput.ConnectMode.ABORT_ON_CONFLICT);
-                    }
-                }else {
-                    result = input.connect(tx, null, TransactionInput.ConnectMode.ABORT_ON_CONFLICT);
-                }
+                TransactionInput.ConnectionResult result = input.connect(tx, TransactionInput.ConnectMode.ABORT_ON_CONFLICT);
+
                 if (fromChain) {
                     // This TX is supposed to have just appeared on the best chain, so its outputs should not be marked
                     // as spent yet. If they are, it means something is happening out of order.
@@ -3623,14 +3509,6 @@ public class Wallet extends BaseTaggableObject
         return description;
     }
 
-    public ZCoin getZcoin(BigInteger commitmentValue) {
-        return getActiveKeyChain().getZcoinsAssociated(commitmentValue);
-    }
-
-    public List<ZCoin> getZcoins(int amount) {
-        return getActiveKeyChain().getZcoins(amount);
-    }
-
     //endregion
 
     /******************************************************************************************************************/
@@ -4233,129 +4111,6 @@ public class Wallet extends BaseTaggableObject
         } finally {
             lock.unlock();
         }
-    }
-
-    /**
-     *
-     * @param spendRequest
-     */
-    public void completeSendRequest(ZCSpendRequest spendRequest) throws CannotCompleteSendRequestException, AccStoreException {
-        SendRequest request = spendRequest.getSendRequest();
-        long tweak = Long.MAX_VALUE; // (long) (Math.random() * Long.MAX_VALUE);
-        for (TransactionInput input : request.tx.getInputs()) {
-            // First get the zcoin to spend
-            TransactionOutput connectedOutput = input.getConnectedOutput();
-            ZCoin zCoin = getActiveKeyChain().getZcoinsAssociated(connectedOutput.getScriptPubKey().getCommitmentValue());
-            if (zCoin == null)
-                throw new IllegalArgumentException("zCoin associated not found, " + input.getScriptSig().getCommitmentValue().toString(16));
-
-            // Now get the mint transaction associated with this coin
-            Sha256Hash mintTxId = connectedOutput.getParentTransactionHash();
-            int mintTxHeight = connectedOutput.getParentTransaction().getConfidence().getAppearedAtChainHeight();
-
-            if (mintTxHeight < CoinDefinition.MINT_REQUIRED_CONFIRMATIONS) {
-                throw new IllegalStateException("Coin depth is lower than the minimum spend depth");
-            }
-
-            zCoin.setHeight(mintTxHeight);
-            zCoin.setParentTxId(mintTxId);
-            if (zCoin.getCoinDenomination() == CoinDenomination.ZQ_ERROR) {
-                zCoin.setCoinDenomination(Utils.toDenomination(connectedOutput.getValue().value));
-            }
-
-            // Now create the genWithMessage
-            spendRequest.addWaitingRequest(newGenWitMessage(zCoin, tweak), zCoin);
-        }
-    }
-
-    public ZCoin loadZcoin(TransactionOutput output){
-        ZCoin zCoin = getActiveKeyChain().getZcoinsAssociated(output.getScriptPubKey().getCommitmentValue());
-        if (zCoin == null)
-            throw new IllegalArgumentException("zCoin associated not found, " + output.getScriptPubKey().getCommitmentValue().toString(16));
-
-        // Now get the mint transaction associated with this coin
-        Sha256Hash mintTxId = output.getParentTransactionHash();
-        int mintTxHeight = output.getParentTransaction().getConfidence().getAppearedAtChainHeight();
-
-        if (mintTxHeight < CoinDefinition.MINT_REQUIRED_CONFIRMATIONS) {
-            throw new IllegalStateException("Coin depth is lower than the minimum spend depth");
-        }
-
-        zCoin.setHeight(mintTxHeight);
-        zCoin.setParentTxId(mintTxId);
-        if (zCoin.getCoinDenomination() == CoinDenomination.ZQ_ERROR) {
-            zCoin.setCoinDenomination(Utils.toDenomination(output.getValue().value));
-        }
-        return zCoin;
-    }
-
-    private GenWitMessage newGenWitMessage(ZCoin zCoin, long tweak) throws AccStoreException {
-
-        // First check if we already have this mint stored
-        StoredMint storedMint = null;
-        if (context.mintsStore != null) {
-            storedMint = context.mintsStore.get(zCoin.getCommitment().getCommitmentValue());
-        }
-
-        // height, randomize this
-        int startHeight;
-        BigInteger accValue = null;
-        if (storedMint == null){
-            int randomNumber = new Random().nextInt(200);
-            startHeight = (zCoin.getHeight() - (zCoin.getHeight() % 10)) - (randomNumber - randomNumber % 10 );
-            accValue = context.accStore.get(startHeight, zCoin.getCoinDenomination());
-
-
-            // Store mint
-            context.mintsStore.put(
-                    new StoredMint(
-                            zCoin.getCommitment().getCommitmentValue(),
-                            zCoin.getSerial(),
-                            zCoin.getCoinDenomination(),
-                            zCoin.getParentTxId(),
-                            zCoin.getHeight(),
-                            startHeight,
-                            accValue,
-                            accValue
-                    )
-            );
-        }else {
-            startHeight = storedMint.getComputedUpToHeight();
-            accValue = storedMint.getAccWit();
-            if (accValue == null){
-                accValue = context.accStore.get(startHeight, zCoin.getCoinDenomination());
-                if (accValue != null){
-                    // Update mint
-                    storedMint.setAccWit(accValue);
-                    storedMint.setAcc(accValue);
-                    storedMint.setComputedUpToHeight(startHeight);
-                    context.mintsStore.update(storedMint); // Check if update worked correctly..
-                }
-            }
-        }
-
-        // TODO: Cargar aquí el witness value base de este mensaje desde la db de accumulators value
-        // TODO: Recordar que esto puede causar que se acumulen bloques dos veces.. tengo que pasarle el bloque exacto donde se quedó el ultimo.
-        // TODO: Si quiero agregarle randomness deberia pedir los acc value que ocurrieron antes de este mint..
-        // TODO: This is just for the first implementation, should be changed following the final protocol specs..
-        // TODO: Add the last known witness..
-
-        if (accValue == null){
-            log.error("## there is no accValue for nHeightCheckpoint: " + startHeight + ", denom: " + zCoin.getCoinDenomination() + ", for coin: " + zCoin);
-            // Look for an older one here..
-            throw new AccStoreException("WitValue not found", zCoin, startHeight);
-        }
-
-        GenWitMessage genWitMessage = new GenWitMessage(
-                params,
-                startHeight,
-                zCoin.getCoinDenomination(),
-                1, 0.01, tweak,
-                accValue
-        );
-        BigInteger bnValue = zCoin.getCommitment().getCommitmentValue();
-        genWitMessage.insert(bnValue);
-        return genWitMessage;
     }
 
     /**
