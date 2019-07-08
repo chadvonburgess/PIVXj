@@ -60,7 +60,7 @@ public abstract class NetworkParameters {
     /** Unit test network. */
     public static final String ID_UNITTESTNET = CoinDefinition.ID_UNITTESTNET; //"com.google.bitcoin.unittest";
     /** The string returned by getId() for regtest mode. */
-    public static final String ID_REGTEST = "org.pivx.regtest";
+    public static final String ID_REGTEST = "regtest";
 
     /** The string used by the payment protocol to represent the main net. */
     public static final String PAYMENT_PROTOCOL_ID_MAINNET = "main";
@@ -133,38 +133,34 @@ public abstract class NetworkParameters {
     //TODO:  put these bytes into the CoinDefinition
     private static Block createGenesis(NetworkParameters n) {
         Block genesisBlock = new Block(n, Block.BLOCK_VERSION_GENESIS);
-        byte[] txBytes = Utils.HEX.decode("01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff5e04ffff001d01044c55552e532e204e657773202620576f726c64205265706f7274204a616e203238203230313620576974682048697320416273656e63652c205472756d7020446f6d696e6174657320416e6f7468657220446562617465ffffffff0100ba1dd205000000434104c10e83b2703ccf322f7dbd62dd5855ac7c10bd055814ce121ba32607d573b8810c02c0582aed05b4deb9c4b77b26d92428c61256cd42774babea0a073b2ed0c9ac00000000");
+        genesisBlock.setDifficultyTarget(CoinDefinition.genesisBlockDifficultyTarget);
+        genesisBlock.setTime(CoinDefinition.genesisBlockTime);
+        genesisBlock.setNonce(CoinDefinition.genesisBlockNonce);
         Transaction tx = new Transaction(n);
         try {
-            // A script containing the difficulty bits and the following message:
-            //
-            //   coin dependent
-            byte[] bytes = Utils.HEX.decode("04ffff001d01044c55552e532e204e657773202620576f726c64205265706f7274204a616e203238203230313620576974682048697320416273656e63652c205472756d7020446f6d696e6174657320416e6f7468657220446562617465");//CoinDefinition.genesisTxInBytes);
-            TransactionInput transactionInput = new TransactionInput(n, tx, bytes);
-            transactionInput.setSequenceNumber(4294967295L);
-            tx.addInput(transactionInput);
+            Script script = new ScriptBuilder().number(486604799).bigNum(4L).data("Trump’s Middle East Peace Plan Faces a Crossroads After Coalition Talks in Israel Crumble June 1st 2019".getBytes()).build();
+            System.out.println(script.toString());
 
-            byte[] pubKey = Utils.HEX.decode("04c10e83b2703ccf322f7dbd62dd5855ac7c10bd055814ce121ba32607d573b8810c02c0582aed05b4deb9c4b77b26d92428c61256cd42774babea0a073b2ed0c9");
-            ScriptBuilder scriptBuilder = new ScriptBuilder().addChunk(new ScriptChunk(65,pubKey)).op(ScriptOpCodes.OP_CHECKSIG);
-            Script script = scriptBuilder.build();
-            tx.addOutput(new TransactionOutput(n, tx, Coin.valueOf(CoinDefinition.genesisBlockValue, 0), script.getProgram()));
-
+            tx.addInput(new TransactionInput(n, tx, script.getProgram()));
+            tx.addOutput(new TransactionOutput(n, tx, Coin.valueOf(CoinDefinition.genesisBlockValue, 0), new Script(new byte[0]).getProgram()));
         } catch (Exception e) {
             // Cannot happen.
             throw new RuntimeException(e);
         }
-        //System.out.println(tx.getOutput(0).toString());
         genesisBlock.addTransaction(tx);
-        //System.out.println("genesis tx hash: "+tx.getHashAsString());
-        // genesis tx should be -> 1b2ef6e2f28be914103a277377ae7729dcd125dfeb8bf97bd5964ba72b6dc39b
-        if (!tx.getHashAsString().equals("1b2ef6e2f28be914103a277377ae7729dcd125dfeb8bf97bd5964ba72b6dc39b")) throw new IllegalStateException("invalid genesis tx: "+tx.getHashAsString());
+        new Context(n);
+        System.out.println(genesisBlock.toString());
+        System.out.println("genesis tx hash: "+tx.getHashAsString());
+        if (!tx.getHashAsString().equals(CoinDefinition.genesisMerkleRoot)) {
+            throw new IllegalStateException("invalid genesis tx: " + tx.getHashAsString() + " but should be " + CoinDefinition.genesisMerkleRoot);
+        }
         return genesisBlock;
     }
 
 
 
-    public static final int TARGET_TIMESPAN = CoinDefinition.TARGET_TIMESPAN;//14 * 24 * 60 * 60;  // 2 weeks per difficulty cycle, on average.
-    public static final int TARGET_SPACING = CoinDefinition.TARGET_SPACING;// 10 * 60;  // 10 minutes per block.
+    public static final int TARGET_TIMESPAN = CoinDefinition.TARGET_TIMESPAN;//
+    public static final int TARGET_SPACING = CoinDefinition.TARGET_SPACING;
     public static final int INTERVAL = CoinDefinition.INTERVAL;//TARGET_TIMESPAN / TARGET_SPACING;
     
     /**
@@ -476,6 +472,7 @@ public abstract class NetworkParameters {
      * LibZerocoin started height in blockchain
      * @return
      */
+    //TODO remove
     public long getZerocoinStartedHeight() {
         return zerocoinStartedHeight;
     }
