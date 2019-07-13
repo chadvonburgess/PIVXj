@@ -20,32 +20,46 @@ import com.google.common.base.Function;
 import com.google.common.base.Objects;
 import com.google.common.base.Preconditions;
 import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.SettableFuture;
 
+import net.jcip.annotations.GuardedBy;
 
-import org.pivxj.core.listeners.*;
+import org.pivxj.core.listeners.AbstractPeerEventListener;
+import org.pivxj.core.listeners.BlocksDownloadedEventListener;
+import org.pivxj.core.listeners.ChainDownloadStartedEventListener;
+import org.pivxj.core.listeners.GetDataEventListener;
+import org.pivxj.core.listeners.OnTransactionBroadcastListener;
+import org.pivxj.core.listeners.PeerConnectedEventListener;
+import org.pivxj.core.listeners.PeerDisconnectedEventListener;
+import org.pivxj.core.listeners.PreMessageReceivedEventListener;
 import org.pivxj.net.StreamConnection;
 import org.pivxj.store.BlockStore;
 import org.pivxj.store.BlockStoreException;
 import org.pivxj.utils.ListenerRegistration;
 import org.pivxj.utils.Threading;
 import org.pivxj.wallet.Wallet;
-
-import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.FutureCallback;
-import com.google.common.util.concurrent.Futures;
-import com.google.common.util.concurrent.ListenableFuture;
-import com.google.common.util.concurrent.SettableFuture;
-import net.jcip.annotations.GuardedBy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
+
+import javax.annotation.Nullable;
 
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -82,8 +96,6 @@ public class Peer extends PeerSocketHandler {
         = new CopyOnWriteArrayList<ListenerRegistration<PreMessageReceivedEventListener>>();
     private final CopyOnWriteArrayList<ListenerRegistration<OnTransactionBroadcastListener>> onTransactionEventListeners
         = new CopyOnWriteArrayList<ListenerRegistration<OnTransactionBroadcastListener>>();
-    private final CopyOnWriteArrayList<ListenerRegistration<OnGetDataResponseEventListener>> onGetDataResponseEventListener
-            = new CopyOnWriteArrayList<>();
     // Whether to try and download blocks and transactions from this peer. Set to false by PeerGroup if not the
     // primary peer. This is to avoid redundant work and concurrency problems with downloading the same chain
     // in parallel.
@@ -379,27 +391,6 @@ public class Peer extends PeerSocketHandler {
         preMessageReceivedEventListeners.add(new ListenerRegistration<PreMessageReceivedEventListener>(listener, executor));
     }
 
-    /** Registers a listener that is called immediately before a message is received */
-    public void addOnGetDataResponseEventListener(OnGetDataResponseEventListener listener) {
-        addOnGetDataResponseEventListener(Threading.USER_THREAD, listener);
-    }
-
-    /** Registers a listener that is called immediately before a message is received */
-    public void addOnGetDataResponseEventListener(Executor executor, OnGetDataResponseEventListener listener) {
-        onGetDataResponseEventListener.add(new ListenerRegistration<>(listener, executor));
-    }
-
-    public boolean hasOnGetdataResponseListener(OnGetDataResponseEventListener listener){
-        Iterator<ListenerRegistration<OnGetDataResponseEventListener>> it = onGetDataResponseEventListener.iterator();
-        while (it.hasNext()){
-            ListenerRegistration<OnGetDataResponseEventListener> l = it.next();
-            if (l.listener.equals(listener)){
-                return true;
-            }
-        }
-        return false;
-    }
-
     public boolean removeBlocksDownloadedEventListener(BlocksDownloadedEventListener listener) {
         return ListenerRegistration.removeFromList(listener, blocksDownloadedEventListeners);
     }
@@ -426,10 +417,6 @@ public class Peer extends PeerSocketHandler {
 
     public boolean removePreMessageReceivedEventListener(PreMessageReceivedEventListener listener) {
         return ListenerRegistration.removeFromList(listener, preMessageReceivedEventListeners);
-    }
-
-    public boolean removeOnGetDataResponse(OnGetDataResponseEventListener listener) {
-        return ListenerRegistration.removeFromList(listener, onGetDataResponseEventListener);
     }
 
     @Override

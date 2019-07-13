@@ -11,6 +11,10 @@ import java.util.Map;
  */
 public class CoinDefinition {
 
+    public String getCoinName() {
+        return "NativeCoin";
+    }
+
     public static final String coinName = "NativeCoin";
     public static final String coinTicker = "N8V";
     public static final String coinURIScheme = "N8V";

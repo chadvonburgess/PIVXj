@@ -307,7 +307,7 @@ public class Wallet extends BaseTaggableObject
         if (this.keyChainGroup.numKeys() == 0)
             this.keyChainGroup.createAndActivateNewHDChain();
         // wallet version 1 if the key chain is a bip44
-        //this.version = this.keyChainGroup.getActiveKeyChain().getKeyChainType() == DeterministicKeyChain.KeyChainType.BIP44_PIV? 1 : 0;
+        //this.version = this.keyChainGroup.getActiveKeyChain().getKeyChainType() == DeterministicKeyChain.KeyChainType.BIP44_N8V? 1 : 0;
         watchedScripts = Sets.newHashSet();
         unspent = new HashMap<Sha256Hash, Transaction>();
         spent = new HashMap<Sha256Hash, Transaction>();
@@ -1067,8 +1067,6 @@ public class Wallet extends BaseTaggableObject
                     } else if (script.isPayToScriptHash()) {
                         Address a = Address.fromP2SHScript(tx.getParams(), script);
                         keyChainGroup.markP2SHAddressAsUsed(a);
-                    } else if (script.isZcMint() && getActiveKeyChain().isZerocoinPath()){
-                        keyChainGroup.markCommitmentValueAsUsed(script.getCommitmentValue());
                     }
                 } catch (ScriptException e) {
                     // Just means we didn't understand the output of this transaction: ignore it.
@@ -3574,7 +3572,6 @@ public class Wallet extends BaseTaggableObject
      */
     public Coin getBalance(BalanceType balanceType) {
         lock.lock();
-        boolean isZerocoin = getActiveKeyChain().isZerocoinPath();
         try {
             if (balanceType == BalanceType.AVAILABLE || balanceType == BalanceType.AVAILABLE_SPENDABLE) {
                 List<TransactionOutput> candidates = calculateAllSpendCandidates(true, balanceType == BalanceType.AVAILABLE_SPENDABLE);
@@ -4003,12 +4000,8 @@ public class Wallet extends BaseTaggableObject
             checkArgument(!req.completed, "Given SendRequest has already been completed.");
             // Calculate the amount of value we need to import.
             Coin value = Coin.ZERO;
-            int zcMintAmount = 0;
             for (TransactionOutput output : req.tx.getOutputs()) {
                 value = value.add(output.getValue());
-                if (output.isZcMint()){
-                    zcMintAmount++;
-                }
             }
 
             log.info("Completing send tx with {} outputs totalling {} (not including fees)",
@@ -4048,7 +4041,7 @@ public class Wallet extends BaseTaggableObject
             TransactionOutput bestChangeOutput = null;
             if (!req.emptyWallet) {
                 // This can throw InsufficientMoneyException.
-                FeeCalculation feeCalculation = calculateFee(req, value, originalInputs, req.ensureMinRequiredFee, candidates, zcMintAmount);
+                FeeCalculation feeCalculation = calculateFee(req, value, originalInputs, req.ensureMinRequiredFee, candidates);
                 bestCoinSelection = feeCalculation.bestCoinSelection;
                 bestChangeOutput = feeCalculation.bestChangeOutput;
             } else {
@@ -4151,10 +4144,6 @@ public class Wallet extends BaseTaggableObject
                 }
 
                 Script scriptPubKey = txIn.getConnectedOutput().getScriptPubKey();
-                // If it's a zc_mint we don't need to sign it.
-                if (scriptPubKey.isZcMint() || scriptPubKey.isZcSpend()){
-                    continue;
-                }
 
                 RedeemData redeemData = txIn.getConnectedRedeemData(maybeDecryptingKeyBag);
                 checkNotNull(redeemData, "Transaction exists in wallet that we cannot redeem: %s", txIn.getOutpoint().getHash());
@@ -4219,13 +4208,6 @@ public class Wallet extends BaseTaggableObject
                 for (TransactionOutput output : myUnspents) {
                     if (excludeUnsignable && !canSignFor(output.getScriptPubKey())) continue;
                     Transaction transaction = checkNotNull(output.getParentTransaction());
-
-                    // Mint check TODO: Check me..
-                    if (excludeImmatureCoinbases && output.isZcMint()){
-                        if (output.getParentTransactionDepthInBlocks() < CoinDefinition.MINT_REQUIRED_CONFIRMATIONS){
-                            continue;
-                        }
-                    }
 
                     if (excludeImmatureCoinbases && !transaction.isMature())
                         continue;
@@ -4918,7 +4900,7 @@ public class Wallet extends BaseTaggableObject
     //region Fee calculation code
 
     public FeeCalculation calculateFee(SendRequest req, Coin value, List<TransactionInput> originalInputs,
-                                       boolean needAtLeastReferenceFee, List<TransactionOutput> candidates, int amountOfZcMints) throws InsufficientMoneyException {
+                                       boolean needAtLeastReferenceFee, List<TransactionOutput> candidates) throws InsufficientMoneyException {
         checkState(lock.isHeldByCurrentThread());
         // There are 3 possibilities for what adding change might do:
         // 1) No effect
@@ -4948,10 +4930,6 @@ public class Wallet extends BaseTaggableObject
             //PIVX instantSend
             if(req.useInstantSend) {
                 fees = Coin.valueOf(max(TransactionLockRequest.MIN_FEE.getValue(), TransactionLockRequest.MIN_FEE.multiply(lastCalculatedInputs).getValue()));
-            }
-            // Zc fee
-            if(amountOfZcMints > 0){
-                fees = CoinDefinition.MIN_ZEROCOIN_MINT_FEE.times(amountOfZcMints);
             }
 
             valueNeeded = value.add(fees);

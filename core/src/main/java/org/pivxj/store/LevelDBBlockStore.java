@@ -14,20 +14,27 @@
 
 package org.pivxj.store;
 
-import host.furszy.zerocoinj.store.RollbackBlockStore;
-import org.pivxj.core.*;
-import org.fusesource.leveldbjni.*;
-import org.iq80.leveldb.*;
+import org.fusesource.leveldbjni.JniDBFactory;
+import org.iq80.leveldb.DB;
+import org.iq80.leveldb.DBFactory;
+import org.iq80.leveldb.DBIterator;
+import org.iq80.leveldb.Options;
+import org.iq80.leveldb.WriteBatch;
+import org.pivxj.core.Block;
+import org.pivxj.core.Context;
+import org.pivxj.core.NetworkParameters;
+import org.pivxj.core.Sha256Hash;
+import org.pivxj.core.StoredBlock;
 import org.pivxj.utils.Threading;
 
-import javax.annotation.*;
-import java.io.*;
-import java.nio.*;
+import java.io.File;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
+
+import javax.annotation.Nullable;
 
 /**
  * An SPV block store that writes every header it sees to a <a href="https://github.com/fusesource/leveldbjni">LevelDB</a>.
@@ -35,7 +42,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * usage than the {@link SPVBlockStore}. If all you want is a regular wallet you don't need this class: it exists for
  * specialised applications where you need to quickly verify a standalone SPV proof.
  */
-public class LevelDBBlockStore implements BlockStore, RollbackBlockStore {
+public class LevelDBBlockStore implements BlockStore {
     private static final byte[] CHAIN_HEAD_KEY = "chainhead".getBytes();
 
     private final Context context;

@@ -162,19 +162,6 @@ public class TransactionInput extends ChildMessage {
     }
 
     /**
-     * Check for protocol spend
-     * @return
-     */
-    public boolean isZcspend() {
-        try {
-            return getScriptSig().isZcSpend();
-        }catch (Exception e){
-            // Nothing..
-        }
-        return false;
-    }
-
-    /**
      * Returns the script that is fed to the referenced output (scriptPubKey) script in order to satisfy it: usually
      * contains signatures and maybe keys, but can contain arbitrary data if the output script accepts it.
      */
@@ -535,20 +522,12 @@ public class TransactionInput extends ChildMessage {
             if (isCoinBase()) {
                 s.append(": COINBASE");
             } else {
-                if (isZcspend()){
-                    s.append(" for [").append(outpoint.toPrivateString()).append("]: ").append(getScriptSig());
-
-                    String flags = hasSequence() ? "sequence: " + sequence : null;
-                    if (flags != null)
-                        s.append(" (").append(flags).append(')');
-                }else {
-                    s.append(" for [").append(outpoint).append("]: ").append(getScriptSig());
-                    String flags = Joiner.on(", ").skipNulls().join(
-                            hasSequence() ? "sequence: " + Long.toHexString(sequence) : null,
-                            isOptInFullRBF() ? "opts into full RBF" : null);
-                    if (!flags.isEmpty())
-                        s.append(" (").append(flags).append(')');
-                }
+                s.append(" for [").append(outpoint).append("]: ").append(getScriptSig());
+                String flags = Joiner.on(", ").skipNulls().join(
+                        hasSequence() ? "sequence: " + Long.toHexString(sequence) : null,
+                        isOptInFullRBF() ? "opts into full RBF" : null);
+                if (!flags.isEmpty())
+                    s.append(" (").append(flags).append(')');
             }
             return s.toString();
         } catch (ScriptException e) {

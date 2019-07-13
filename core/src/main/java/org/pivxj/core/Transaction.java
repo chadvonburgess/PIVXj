@@ -693,13 +693,9 @@ public class Transaction extends ChildMessage {
                     }
                 }
                 if (in.hasSequence()) {
-                    if (in.isZcspend()){
-                        s.append("\n          denomination:").append(in.getSequenceNumber());
-                    }else {
-                        s.append("\n          sequence:").append(Long.toHexString(in.getSequenceNumber()));
-                        if (in.isOptInFullRBF())
-                            s.append(", opts into full RBF");
-                    }
+                    s.append("\n          sequence:").append(Long.toHexString(in.getSequenceNumber()));
+                    if (in.isOptInFullRBF())
+                        s.append(", opts into full RBF");
                 }
             } catch (Exception e) {
                 s.append("[exception: ").append(e.getMessage()).append("]");
@@ -1200,19 +1196,6 @@ public class Transaction extends ChildMessage {
         return sigOps;
     }
 
-
-    /**
-     * Return the amount of mints
-     */
-    public int getAmountOfMints() {
-        int mints = 0;
-        for (TransactionOutput output : outputs) {
-            if (output.isZcMint()){
-                mints++;
-            }
-        }
-        return mints;
-    }
     /**
      * Check block height is in coinbase input script, for use after BIP 34
      * enforcement is enabled.
@@ -1262,29 +1245,13 @@ public class Transaction extends ChildMessage {
 
         Coin valueOut = Coin.ZERO;
         HashSet<TransactionOutPoint> outpoints = new HashSet<TransactionOutPoint>();
-        int amountOfZcSpends = 0;
         for (TransactionInput input : inputs) {
-            if (input.isZcspend()){
-                // If it's a zc_spend then the connected output parentTx hash will be 000.. as they are new minted coins.
-                // for now i can  remove the verifications as there is no wallet mixing zc_spends and regular piv spend
-                // but this needs to be checked again in the future.
-                //log.warn("Duplicated output in zc transaction " + toString());
-                amountOfZcSpends++;
-            }else {
-                if (outpoints.contains(input.getOutpoint())) {
-                    log.error("Duplicated output in a transaction " + toString());
-                    throw new VerificationException.DuplicatedOutPoint();
-                }
+            if (outpoints.contains(input.getOutpoint())) {
+                log.error("Duplicated output in a transaction "+toString());
+                throw new VerificationException.DuplicatedOutPoint();
             }
             outpoints.add(input.getOutpoint());
         }
-
-        // Spends checks
-        if (amountOfZcSpends > CoinDefinition.ZEROCOIN_MAX_SPEND_OUTPUTS)
-            throw new VerificationException.InvalidZCSpendTx("Max amount of spends outputs in a tx is " + CoinDefinition.ZEROCOIN_MAX_SPEND_OUTPUTS);
-
-        // Check mint fee amount
-        int amountOfZcMints = 0;
         try {
             for (TransactionOutput output : outputs) {
                 if (output.getValue().signum() < 0)    // getValue() can throw IllegalStateException
@@ -1292,25 +1259,11 @@ public class Transaction extends ChildMessage {
                 valueOut = valueOut.add(output.getValue());
                 if (params.hasMaxMoney() && valueOut.compareTo(params.getMaxMoney()) > 0)
                     throw new IllegalArgumentException();
-                if (output.isZcMint())
-                    amountOfZcMints++;
             }
         } catch (IllegalStateException e) {
             throw new VerificationException.ExcessiveValue();
         } catch (IllegalArgumentException e) {
             throw new VerificationException.ExcessiveValue();
-        }
-
-        if (amountOfZcMints > 0){
-            Coin fee = getFee();
-            if (fee != null){
-                Coin expectedFee = CoinDefinition.MIN_ZEROCOIN_MINT_FEE.multiply(amountOfZcMints);
-                if (fee.isLessThan(expectedFee)){
-                    throw new VerificationException.InvalidZCMintFee("Expected fee " + expectedFee.toFriendlyString() + ", tx fee " + fee.toFriendlyString());
-                }
-            }else {
-                log.warn("#### Verfiy transaction null fee");
-            }
         }
 
         if (isCoinBase()) {

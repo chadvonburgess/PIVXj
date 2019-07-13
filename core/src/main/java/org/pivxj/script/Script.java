@@ -18,8 +18,6 @@
 
 package org.pivxj.script;
 
-import com.zerocoinj.core.CoinSpend;
-import com.zerocoinj.core.context.ZerocoinContext;
 import org.pivxj.core.*;
 import org.pivxj.crypto.TransactionSignature;
 import com.google.common.collect.Lists;
@@ -306,32 +304,6 @@ public class Script {
         } else {
             throw new ScriptException("Script did not match expected form: " + this);
         }
-    }
-
-    /**
-     *
-     */
-    public BigInteger getCommitmentValue() {
-        if (!isZcMint()){
-            throw new ScriptException("Script is not a zc_mint");
-        }
-        if (chunks.size() != 3) {
-            throw new ScriptException("Script not of right size, expecting 2 but got " + chunks.size());
-        }
-        return Utils.unserializeBiginteger(chunks.get(2).data);
-    }
-
-    public CoinSpend getCoinSpend(NetworkParameters params, ZerocoinContext zerocoinContext) {
-        if (!isZcSpend()) throw new ScriptException("Script is not a zc_spend");
-        byte[] coinSpendBytes = getChunks().get(0).data;
-        if (coinSpendBytes == null) throw new ScriptException("Invalid zc_spend script");
-        // now read the length
-        int size = coinSpendBytes.length - 3;
-        byte[] coinSpend = new byte[size];
-        System.arraycopy(coinSpendBytes,3, coinSpend, 0, size);
-        //System.out.println(Hex.toHexString(coinSpendBytes));
-        //System.out.println(Hex.toHexString(coinSpend));
-        return CoinSpend.parse(params, zerocoinContext, coinSpend);
     }
 
     /**
@@ -868,15 +840,15 @@ public class Script {
         return chunks.size() > 1 && chunks.get(0).equalsOpCode(OP_RETURN);
     }
 
-    public boolean isZcMint() {
-        if (chunks.isEmpty()) return false;
-        return chunks.get(0).opcode == OP_ZEROCOINMINT;
-    }
+//    public boolean isZcMint() {
+//        if (chunks.isEmpty()) return false;
+//        return chunks.get(0).opcode == OP_ZEROCOINMINT;
+//    }
 
-    public boolean isZcSpend() {
-        if (chunks.isEmpty()) return false;
-        return chunks.get(0).opcode == OP_ZEROCOINSPEND;
-    }
+//    public boolean isZcSpend() {
+//        if (chunks.isEmpty()) return false;
+//        return chunks.get(0).opcode == OP_ZEROCOINSPEND;
+//    }
 
     /**
      * Exposes the script interpreter. Normally you should not use this directly, instead use

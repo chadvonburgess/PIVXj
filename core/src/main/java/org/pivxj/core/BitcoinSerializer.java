@@ -28,8 +28,6 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 
-import host.furszy.zerocoinj.protocol.PubcoinsMessage;
-
 import static org.pivxj.core.Transaction.MAX_STANDARD_TX_SIZE;
 import static org.pivxj.core.Utils.HEX;
 import static org.pivxj.core.Utils.readUint32;
@@ -237,9 +235,7 @@ public class BitcoinSerializer extends MessageSerializer {
             }catch (ScriptException e){
                 log.error("make transaction, "+ Hex.toHexString(payloadBytes),e);
             }
-        } else if (command.equals("pubcoins")){
-            message = makePubcoinsMessage(payloadBytes, length);
-        } else if (command.equals("addr")) {
+        }  else if (command.equals("addr")) {
             message = makeAddressMessage(payloadBytes, length);
         } else if (command.equals("ping")) {
             message = new Ping(params, payloadBytes);
@@ -339,11 +335,6 @@ public class BitcoinSerializer extends MessageSerializer {
     @Override
     public Block makeBlock(final byte[] payloadBytes, final int offset, final int length) throws ProtocolException {
         return new Block(params, payloadBytes, offset, this, length);
-    }
-
-    //@Override
-    public Message makePubcoinsMessage(byte[] payloadBytes, int length) {
-        return new PubcoinsMessage(params, payloadBytes, 0, length);
     }
 
     /**

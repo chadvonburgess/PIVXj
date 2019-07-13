@@ -19,7 +19,6 @@ package org.pivxj.wallet;
 
 import com.google.common.collect.*;
 import com.google.protobuf.*;
-import com.zerocoinj.core.ZCoin;
 import org.pivxj.core.*;
 import org.pivxj.crypto.*;
 import org.pivxj.script.*;
@@ -271,24 +270,6 @@ public class KeyChainGroup implements KeyBag {
     }
 
     /**
-     *
-     * @param key
-     * @return
-     */
-    public ZCoin getZcoinsAssociated(DeterministicKey key) {
-        // TODO: Change this for: getZcoinsAssociatedRealKey
-        return getActiveKeyChain().getZcoinsAssociated(key);
-    }
-
-    public boolean isCommitmentValuesMine(BigInteger value) {
-        return getActiveKeyChain().isCommitmentValueMine(value);
-    }
-
-    public boolean isCoinSerialMine(BigInteger serial) {
-        return getActiveKeyChain().isCoinSerialMine(serial);
-    }
-
-    /**
      * Sets the lookahead buffer size for ALL deterministic key chains as well as for following key chains if any exist,
      * see {@link DeterministicKeyChain#setLookaheadSize(int)}
      * for more information.
@@ -486,18 +467,6 @@ public class KeyChainGroup implements KeyBag {
         }
     }
 
-    /**
-     *
-     * @param commitmentValue
-     */
-    public void markCommitmentValueAsUsed(BigInteger commitmentValue) {
-        ZCoin coin = getActiveKeyChain().getZcoinsAssociated(commitmentValue);
-        if (coin != null){
-            markPubKeyAsUsed(coin.getKeyPair().getPubKey());
-            // todo: Check if i should mark the commitment as used too or not..
-        }
-    }
-
     /** Returns the number of keys managed by this group, including the lookahead buffers. */
     public int numKeys() {
         int result = basic.numKeys();
@@ -631,12 +600,7 @@ public class KeyChainGroup implements KeyBag {
     }
 
     public BloomFilter getBloomFilter(int size, double falsePositiveRate, long nTweak) {
-        BloomFilter filter;
-        if (getActiveKeyChain().isZerocoinPath()){
-            // TODO: check this..
-            filter = new BloomFilter(size, falsePositiveRate, nTweak, BloomFilter.BloomUpdate.UPDATE_ALL);
-        }else
-            filter = new BloomFilter(size, falsePositiveRate, nTweak);
+        BloomFilter filter = new BloomFilter(size, falsePositiveRate, nTweak);
         if (basic.numKeys() > 0)
             filter.merge(basic.getFilter(size, falsePositiveRate, nTweak));
 

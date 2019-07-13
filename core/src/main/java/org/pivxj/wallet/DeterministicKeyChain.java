@@ -147,8 +147,6 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
     public static final ImmutableList<ChildNumber> BIP44_ACCOUNT_ZERO_PATH =
             ImmutableList.of(BIP44_MASTER_KEY, PIVX_PATH, ChildNumber.ZERO_HARDENED);
 
-    public static final ImmutableList<ChildNumber> BIP44_ACCOUNT_ZERO_PATH_ZPIV =
-            ImmutableList.of(BIP44_MASTER_KEY, ZPIVX_PATH, ChildNumber.ZERO_HARDENED);
 
     // We try to ensure we have at least this many keys ready and waiting to be handed out via getKey().
     // See docs for getLookaheadSize() for more info on what this is for. The -1 value means it hasn't been calculated
@@ -189,11 +187,11 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
     // and always 1 for other transaction types
     protected int sigsRequiredToSpend = 1;
     // Key Chain type to support bip32 or bip44
-    private KeyChainType keyChainType = KeyChainType.BIP44_PIV;
+    private KeyChainType keyChainType = KeyChainType.BIP32;
 
     // Key Chain version to support BIP44 fixed without refactor this code too much
     public enum KeyChainType{
-        BIP32, BIP44_PIV, BIP44_ZPIV
+        BIP32, BIP44_N8V
     }
 
     public static class Builder<T extends Builder<T>> {
@@ -288,7 +286,7 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
                 chain = new DeterministicKeyChain(seed);
             } else {
                 watchingKey.setCreationTimeSeconds(seedCreationTimeSecs);
-                chain = new DeterministicKeyChain(watchingKey,KeyChainType.BIP44_PIV);
+                chain = new DeterministicKeyChain(watchingKey,KeyChainType.BIP44_N8V);
             }
 
             return chain;
@@ -351,7 +349,7 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
      * if the starting seed is the same.
      */
     protected DeterministicKeyChain(DeterministicSeed seed) {
-        this(seed, null,KeyChainType.BIP44_PIV);
+        this(seed, null,KeyChainType.BIP44_N8V);
     }
 
     /**
@@ -362,7 +360,7 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
     public DeterministicKeyChain(DeterministicKey watchingKey,KeyChainType keyChainType) {
         this.keyChainType = keyChainType;
         checkArgument(watchingKey.isPubKeyOnly(), "Private subtrees not currently supported: if you got this key from DKC.getWatchingKey() then use .dropPrivate().dropParent() on it first.");
-        if (keyChainType != KeyChainType.BIP44_PIV)
+        if (keyChainType != KeyChainType.BIP44_N8V)
             checkArgument( watchingKey.getPath().size() == getAccountPath().size(), "You can only watch an account key currently");
         basicKeyChain = new BasicKeyChain();
         this.seed = null;
@@ -378,7 +376,7 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
      * <p>Watch key has to be an account key.</p>
      */
     protected DeterministicKeyChain(DeterministicKey watchKey, boolean isFollowing) {
-        this(watchKey,KeyChainType.BIP44_PIV);
+        this(watchKey,KeyChainType.BIP44_N8V);
         this.isFollowing = isFollowing;
     }
 
@@ -395,7 +393,7 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
      * Creates a key chain that watches the given account key.
      */
     public static DeterministicKeyChain watch(DeterministicKey accountKey) {
-        return new DeterministicKeyChain(accountKey,KeyChainType.BIP44_PIV);
+        return new DeterministicKeyChain(accountKey,KeyChainType.BIP44_N8V);
     }
 
     /**
@@ -503,10 +501,8 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
         switch (keyChainType){
             case BIP32:
                 return ACCOUNT_ZERO_PATH;
-            case BIP44_PIV:
+            case BIP44_N8V:
                 return BIP44_ACCOUNT_ZERO_PATH;
-            case BIP44_ZPIV:
-                return BIP44_ACCOUNT_ZERO_PATH_ZPIV;
             default:
                 throw new IllegalStateException("Unknown keyChainType");
         }
@@ -514,10 +510,6 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
 
     public KeyChainType getKeyChainType() {
         return keyChainType;
-    }
-
-    public boolean isZerocoinPath() {
-        return keyChainType == KeyChainType.BIP44_ZPIV;
     }
 
     private DeterministicKey encryptNonLeaf(KeyParameter aesKey, DeterministicKeyChain chain,
@@ -532,7 +524,7 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
     // Derives the account path keys and inserts them into the basic key chain. This is important to preserve their
     // order for serialization, amongst other things.
     private void initializeHierarchyUnencrypted(DeterministicKey baseKey) {
-        if (baseKey.isPubKeyOnly() &&  (keyChainType == KeyChainType.BIP44_PIV || keyChainType == KeyChainType.BIP44_ZPIV )){
+        if (baseKey.isPubKeyOnly() &&  (keyChainType == KeyChainType.BIP44_N8V || keyChainType == KeyChainType.BIP44_N8V )){
             externalParentKey = baseKey;
             internalParentKey = baseKey;
             addToBasicChain(externalParentKey);
@@ -736,7 +728,7 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
     public DeterministicKey getWatchingKey() {
         List<ChildNumber> childNumbers = Lists.newArrayList(getAccountPath());
         // first account only
-        if (keyChainType == KeyChainType.BIP44_PIV || keyChainType == KeyChainType.BIP44_ZPIV){
+        if (keyChainType == KeyChainType.BIP44_N8V){
             childNumbers.add(ChildNumber.ZERO);
         }
         return getKeyByPath(childNumbers,true);
@@ -893,28 +885,16 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
         int sigsRequiredToSpend = 1;
 
         // Determine KeyChainType
-        KeyChainType keyChainType = KeyChainType.BIP44_PIV;
+        KeyChainType keyChainType = KeyChainType.BIP32;
         // Quick loop to see if the first key correspond to a BIP44 path.
-        boolean checkNext = false;
         for (Protos.Key key : keys) {
             // Deserialize the path through the tree.
             LinkedList<ChildNumber> path = newLinkedList();
             for (int i : key.getDeterministicKey().getPathList())
                 path.add(new ChildNumber(i));
-
-            if (!checkNext) {
-                if (!path.isEmpty() && path.get(0).equals(BIP44_MASTER_KEY)) {
-                    // is BIP44
-                    checkNext = true;
-                    continue;
-                }
-            }else {
-                ChildNumber coinType = path.get(1);
-                if (coinType.equals(PIVX_PATH)) {
-                    keyChainType = KeyChainType.BIP44_PIV;
-                } else if (coinType.equals(ZPIVX_PATH)) {
-                    keyChainType = KeyChainType.BIP44_ZPIV;
-                }
+            if (!path.isEmpty() && path.get(0).equals(BIP44_MASTER_KEY)){
+                // is BIP44
+                keyChainType = KeyChainType.BIP44_N8V;
                 break;
             }
         }
@@ -1030,7 +1010,6 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
                 }
                 if (key.hasCreationTimestamp())
                     detkey.setCreationTimeSeconds(key.getCreationTimestamp() / 1000);
-
                 if (log.isDebugEnabled())
                     log.debug("Deserializing: DETERMINISTIC_KEY: {}", detkey);
                 if (!isWatchingAccountKey) {
@@ -1056,7 +1035,6 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
                         }
                     }
                 }
-
                 chain.hierarchy.putKey(detkey);
                 chain.basicKeyChain.importKey(detkey);
             }
@@ -1090,7 +1068,7 @@ public class DeterministicKeyChain implements EncryptableKeyChain {
 
     @Override
     public DeterministicKeyChain toEncrypted(KeyCrypter keyCrypter, KeyParameter aesKey) {
-        return toEncrypted(keyCrypter,aesKey,KeyChainType.BIP44_PIV);
+        return toEncrypted(keyCrypter,aesKey,KeyChainType.BIP44_N8V);
     }
 
     public DeterministicKeyChain toEncrypted(KeyCrypter keyCrypter, KeyParameter aesKey, KeyChainType keyChainType) {
